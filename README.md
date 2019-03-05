@@ -1,9 +1,9 @@
-# AI-Ops: Incoming listener microservice
+# AI-Ops: Consumer microservice
 
 [![Build Status](https://travis-ci.org/ManageIQ/aiops-incoming-listener.svg?branch=master)](https://travis-ci.org/ManageIQ/aiops-incoming-listener)
 [![License](https://img.shields.io/badge/license-APACHE2-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
-Kafka listener collecting messages containing data relevant to AI-Ops
+A Consumer service that produces a recommendations JSON on an Advisor topic
 
 ## Get Started
 
@@ -19,8 +19,9 @@ Kafka listener collecting messages containing data relevant to AI-Ops
 ## Configure
 
 * `KAFKA_SERVER` - specify message bus server
-* `KAFKA_TOPIC` - topic to consume
-* `NEXT_MICROSERVICE_HOST` - where to pass the collected data (`hostname:port`)
+* `KAFKA_CONSUMER_TOPIC` - topic to consume
+* `KAFKA_PRODUCER_TOPIC` - topic to produce on
+
 
 ## License
 
