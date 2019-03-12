@@ -10,6 +10,7 @@ from aiokafka import AIOKafkaConsumer, ConsumerRecord, AIOKafkaProducer
 from aiokafka.errors import KafkaError
 from io import BytesIO
 import ssl
+import json
 
 import tar_extractor
 
@@ -29,15 +30,19 @@ logger.setLevel(logging.DEBUG)
 # Asynchronous event loop
 MAIN_LOOP = asyncio.get_event_loop()
 
+# List of valid topics
+VOLUME_TYPE_VALIDATION = 'platform.upload.aivolumetypevalidation'
+
 # Kafka listener config
 SERVER = os.environ.get('KAFKA_SERVER')
-CONSUMER_TOPIC = os.environ.get('KAFKA_CONSUMER_TOPIC')
+VOLUME_TYPE_VALIDATION_TOPIC = os.environ.get('VOLUME_TYPE_VALIDATION_TOPIC')
 PRODUCER_TOPIC = os.environ.get('KAFKA_PRODUCER_TOPIC')
 GROUP_ID = os.environ.get('KAFKA_CLIENT_GROUP')
 CLIENT_ID = uuid4()
 
 CONSUMER = AIOKafkaConsumer(
-               CONSUMER_TOPIC,
+               VOLUME_TYPE_VALIDATION_TOPIC,
+               # Add other topics here from other use cases
                loop=MAIN_LOOP,
                client_id=CLIENT_ID,
                group_id=GROUP_ID,
@@ -53,12 +58,13 @@ VALIDATE_PRESENCE = {'url'}
 MAX_RETRIES = 3
 
 
-async def recommendations(msg_id: str, message: dict):
+async def recommendations(msg_id: str, topic: str, message: dict):
     """Retrieves recommendations JSON from the TAR file in s3.
 
     Make an async HTTP GET call to the s3 bucket endpoint
 
     :param msg_id: Message identifier used in logs
+    :param topic: Topic where the message was sent
     :param message: A dictionary sent as a payload
     :return: HTTP response
     """
@@ -67,6 +73,7 @@ async def recommendations(msg_id: str, message: dict):
     # Extract it and post the contents on the Advisor topic
 
     url = message.get('url').strip()
+    rule_id = get_rule_id(topic)
     ssl_context = ssl.SSLContext()
     async with aiohttp.ClientSession(raise_for_status=True) as session:
         for attempt in range(MAX_RETRIES):
@@ -80,14 +87,37 @@ async def recommendations(msg_id: str, message: dict):
                     file_obj = BytesIO(data)
                     json_data = await tar_extractor.extract(file_obj)
 
-                    try:
-                        # Produce message constituting the json
-                        await PRODUCER.send_and_wait(PRODUCER_TOPIC, json_data)
-                        logger.debug("Message %s: produced [%s]", msg_id, json_data)
-                    except KafkaError as e:
-                        logger.debug(
-                            'Producer send failed: %s', e
-                            )
+                    # JSON Processing
+                    hosts = json.loads(json_data.decode())['hosts']
+
+                    for _host_id, host_info in hosts.items():
+                        hits = [
+                            {
+                                'rule_id': rule_id,
+                                'details': host_info
+                            }
+                        ]
+
+                        host_item = {
+                            'source': 'aiops',
+                            'host_product': 'OCP',
+                            'host_role': 'Cluster',
+                            'inventory_id': host_info['inventory_id'],
+                            'account': message.get('account'),
+                            'hits': hits
+                        }
+
+                        json_string = json.dumps(host_item)
+                        databytes = json_string.encode()
+
+                        try:
+                            # Produce message constituting the json
+                            await PRODUCER.send_and_wait(PRODUCER_TOPIC, databytes)
+                            logger.debug("Message %s: produced [%s]", msg_id, databytes)
+                        except KafkaError as e:
+                            logger.debug(
+                                'Producer send failed: %s', e
+                                )
                 break
             except aiohttp.ClientError as e:
                 logging.warning(
@@ -115,22 +145,23 @@ async def process_message(message: ConsumerRecord) -> bool:
 
     # Parse the message as JSON
     try:
-        message = loads(message.value)
+        topic = message.topic
+        content = loads(message.value)
     except ValueError as e:
         logger.error(
             'Unable to parse message %s: %s',
-            str(message), str(e)
+            str(content), str(e)
         )
         return False
 
-    logger.debug('Message %s: %s', msg_id, str(message))
+    logger.debug('Message %s: %s', msg_id, str(content))
 
     # Select only the interesting messages
-    if not VALIDATE_PRESENCE.issubset(message.keys()):
+    if not VALIDATE_PRESENCE.issubset(content.keys()):
         return False
 
     try:
-        await recommendations(msg_id, message)
+        await recommendations(msg_id, topic, content)
     except aiohttp.ClientError:
         logger.warning('Message %s: Unable to pass message', msg_id)
         return False
@@ -150,7 +181,7 @@ async def init_kafka_resources() -> None:
     logger.info('Connecting to Kafka server...')
     logger.info('Configuration:')
     logger.info('\tserver:    %s', SERVER)
-    logger.info('\tConsumer Topic:     %s', CONSUMER_TOPIC)
+    logger.info('\tVolume Type Validation Topic:     %s', VOLUME_TYPE_VALIDATION_TOPIC)
     logger.info('\tProducer Topic:     %s', PRODUCER_TOPIC)
     logger.info('\tgroup_id:  %s', GROUP_ID)
     logger.info('\tclient_id: %s', CLIENT_ID)
@@ -173,12 +204,19 @@ async def init_kafka_resources() -> None:
         await PRODUCER.stop()
 
 
+def get_rule_id(topic):
+    rules = {
+        VOLUME_TYPE_VALIDATION: "wrong_volume_type",
+    }
+    return rules.get(topic)
+
+
 def main():
     """Service init function."""
     if __name__ == '__main__':
         # Check environment variables passed to container
         # pylama:ignore=C0103
-        env = {'KAFKA_SERVER', 'KAFKA_CONSUMER_TOPIC', 'KAFKA_PRODUCER_TOPIC'}
+        env = {'KAFKA_SERVER', 'VOLUME_TYPE_VALIDATION_TOPIC', 'KAFKA_PRODUCER_TOPIC'}
 
         if not env.issubset(os.environ):
             logger.error(
