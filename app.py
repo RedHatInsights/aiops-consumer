@@ -91,12 +91,15 @@ async def recommendations(msg_id: str, topic: str, message: dict):
                     hosts = json.loads(json_data.decode())['hosts']
 
                     for _host_id, host_info in hosts.items():
-                        hits = [
-                            {
-                                'rule_id': rule_id,
-                                'details': host_info
-                            }
-                        ]
+                        if host_info['recommendations']:
+                            hits = [
+                                {
+                                    'rule_id': rule_id,
+                                    'details': host_info
+                                }
+                            ]
+                        else:
+                            hits = []
 
                         host_item = {
                             'source': 'aiops',
