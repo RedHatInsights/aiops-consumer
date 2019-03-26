@@ -2,7 +2,6 @@ import tarfile
 from io import BytesIO
 
 import logging
-import sys
 
 logger = logging.getLogger()
 
