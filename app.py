@@ -98,7 +98,7 @@ async def recommendations(msg_id: str, message: dict):
         if host_info['recommendations']:
             hits.append(
                 {
-                    'rule_id': AI_SERVICE,
+                    'rule_id': AI_SERVICE.replace("-", "_"),
                     'details': host_info
                 }
             )
