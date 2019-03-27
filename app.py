@@ -54,7 +54,7 @@ VALIDATE_PRESENCE = {'url'}
 MAX_RETRIES = 3
 
 
-async def recommendations(msg_id: str, topic: str, message: dict):
+async def recommendations(msg_id: str, message: dict):
     """Retrieve recommendations JSON from the TAR file in s3.
 
     Make an async HTTP GET call to the s3 bucket endpoint
@@ -136,7 +136,6 @@ async def process_message(message: ConsumerRecord) -> bool:
 
     # Parse the message as JSON
     try:
-        topic = message.topic
         content = json.loads(message.value)
     except ValueError as e:
         logger.error(
@@ -152,7 +151,7 @@ async def process_message(message: ConsumerRecord) -> bool:
         return False
 
     try:
-        await recommendations(msg_id, topic, content)
+        await recommendations(msg_id, content)
     except aiohttp.ClientError:
         logger.warning('Message %s: Unable to pass message', msg_id)
         return False
