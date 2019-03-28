@@ -13,10 +13,6 @@ from aiokafka.errors import KafkaError
 
 import tar_extractor
 
-# Map incoming topics to Insights rule type
-RULES = {
-    'platform.upload.aivolumetypevalidation': 'wrong_volume_type',
-}
 
 # Setup logging
 logging.basicConfig(
@@ -35,14 +31,14 @@ MAIN_LOOP = asyncio.get_event_loop()
 
 # Kafka listener config
 SERVER = os.environ.get('KAFKA_SERVER')
-VOLUME_TYPE_VALIDATION_TOPIC = os.environ.get('VOLUME_TYPE_VALIDATION_TOPIC')
+CONSUMER_TOPIC = os.environ.get('KAFKA_CONSUMER_TOPIC')
 PRODUCER_TOPIC = os.environ.get('KAFKA_PRODUCER_TOPIC')
 GROUP_ID = os.environ.get('KAFKA_CLIENT_GROUP')
+AI_SERVICE = os.environ.get('AI_SERVICE')
 CLIENT_ID = uuid4()
 
 CONSUMER = AIOKafkaConsumer(
-    VOLUME_TYPE_VALIDATION_TOPIC,
-    # Add other topics here from other use cases
+    CONSUMER_TOPIC,
     loop=MAIN_LOOP,
     client_id=CLIENT_ID,
     group_id=GROUP_ID,
@@ -58,7 +54,7 @@ VALIDATE_PRESENCE = {'url'}
 MAX_RETRIES = 3
 
 
-async def recommendations(msg_id: str, topic: str, message: dict):
+async def recommendations(msg_id: str, message: dict):
     """Retrieve recommendations JSON from the TAR file in s3.
 
     Make an async HTTP GET call to the s3 bucket endpoint
@@ -102,13 +98,13 @@ async def recommendations(msg_id: str, topic: str, message: dict):
         if host_info['recommendations']:
             hits.append(
                 {
-                    'rule_id': RULES.get(topic),
+                    'rule_id': AI_SERVICE.replace("-", "_"),
                     'details': host_info
                 }
             )
 
         output = {
-            'source': 'aiops',
+            'source': AI_SERVICE,
             'host_product': 'OCP',
             'host_role': 'Cluster',
             'inventory_id': host_info['inventory_id'],
@@ -140,7 +136,6 @@ async def process_message(message: ConsumerRecord) -> bool:
 
     # Parse the message as JSON
     try:
-        topic = message.topic
         content = json.loads(message.value)
     except ValueError as e:
         logger.error(
@@ -156,7 +151,7 @@ async def process_message(message: ConsumerRecord) -> bool:
         return False
 
     try:
-        await recommendations(msg_id, topic, content)
+        await recommendations(msg_id, content)
     except aiohttp.ClientError:
         logger.warning('Message %s: Unable to pass message', msg_id)
         return False
@@ -176,7 +171,7 @@ async def init_kafka_resources() -> None:
     logger.info('Connecting to Kafka server...')
     logger.info('Consumer configuration:')
     logger.info('\tserver:    %s', SERVER)
-    logger.info('\ttopic:     %s', VOLUME_TYPE_VALIDATION_TOPIC)
+    logger.info('\ttopic:     %s', CONSUMER_TOPIC)
     logger.info('\tgroup_id:  %s', GROUP_ID)
     logger.info('\tclient_id: %s', CLIENT_ID)
     logger.info('Producer configuration:')
@@ -208,7 +203,7 @@ def main():
         # pylama:ignore=C0103
         env = {
             'KAFKA_SERVER',
-            'VOLUME_TYPE_VALIDATION_TOPIC',
+            'KAFKA_CONSUMER_TOPIC',
             'KAFKA_PRODUCER_TOPIC'
         }
 
