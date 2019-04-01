@@ -96,9 +96,11 @@ async def recommendations(msg_id: str, message: dict):
     for host_info in hosts.values():
         hits = []
         if host_info['recommendations']:
+            rule = AI_SERVICE.replace("-", "_")
+            rule_id = f'{rule}|{rule.upper()}'
             hits.append(
                 {
-                    'rule_id': AI_SERVICE.replace("-", "_"),
+                    'rule_id': rule_id,
                     'details': host_info
                 }
             )
