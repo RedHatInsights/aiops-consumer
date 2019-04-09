@@ -91,13 +91,14 @@ async def recommendations(msg_id: str, message: dict):
     data = await tar_extractor.extract(BytesIO(data))
 
     # JSON Processing
-    hosts = json.loads(data.decode())['hosts']
+    json_data = json.loads(data.decode())
 
-    for host_info in hosts.values():
+    for host_info in json_data['hosts'].values():
         hits = []
         if host_info['recommendations']:
             rule = AI_SERVICE.replace("-", "_")
             rule_id = f'{rule}|{rule.upper()}'
+            host_info['common_data'] = json_data.get('common_data', {})
             hits.append(
                 {
                     'rule_id': rule_id,
