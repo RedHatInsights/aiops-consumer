@@ -54,6 +54,23 @@ VALIDATE_PRESENCE = {'url'}
 MAX_RETRIES = 3
 
 
+async def hits_with_rules(host_info: dict):
+    """Populate hits list with rule_id and details."""
+    hits = []
+
+    # By default we use the AI_SERVICE as rule type indicator
+    rules = [AI_SERVICE.replace("-", "_")]
+
+    # In case the host recommendation should be generated for multiple rules,
+    # list all rules
+    rules = host_info['recommendations'].get('applicable_rules', rules)
+
+    for rule in rules:
+        rule_id = f'{rule}|{rule.upper()}'
+        hits.append({'rule_id': rule_id, 'details': host_info})
+    return hits
+
+
 async def recommendations(msg_id: str, message: dict):
     """Retrieve recommendations JSON from the TAR file in s3.
 
@@ -96,14 +113,7 @@ async def recommendations(msg_id: str, message: dict):
     for host_info in hosts.values():
         hits = []
         if host_info['recommendations']:
-            rule = AI_SERVICE.replace("-", "_")
-            rule_id = f'{rule}|{rule.upper()}'
-            hits.append(
-                {
-                    'rule_id': rule_id,
-                    'details': host_info
-                }
-            )
+            hits = await hits_with_rules(host_info)
 
         output = {
             'source': AI_SERVICE,
