@@ -57,17 +57,17 @@ MAX_RETRIES = 3
 async def hits_with_rules(host_info: dict):
     """Populate hits list with rule_id and details."""
     hits = []
-    rules = host_info['recommendations'].get(
-        'applicable_rules', [AI_SERVICE.replace("-", "_")]
-    )
+
+    # By default we use the AI_SERVICE as rule type indicator
+    rules = [AI_SERVICE.replace("-", "_")]
+
+    # In case the host recommendation should be generated for multiple rules,
+    # list all rules
+    rules = host_info['recommendations'].get('applicable_rules', rules)
+
     for rule in rules:
         rule_id = f'{rule}|{rule.upper()}'
-        hits.append(
-            {
-                'rule_id': rule_id,
-                'details': host_info
-            }
-        )
+        hits.append({'rule_id': rule_id, 'details': host_info})
     return hits
 
 
