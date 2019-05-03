@@ -63,7 +63,8 @@ async def hits_with_rules(host_info: dict):
 
     # In case the host recommendation should be generated for multiple rules,
     # list all rules
-    rules = host_info['recommendations'].get('applicable_rules', rules)
+    if isinstance(host_info['recommendations'], dict):
+        rules = host_info['recommendations'].get('applicable_rules', rules)
 
     for rule in rules:
         rule_id = f'{rule}|{rule.upper()}'
